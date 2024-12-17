@@ -4,7 +4,12 @@
 int main() {
 	namespace fs = std::filesystem;
 	fs::current_path("D:\\Hillel\\HW14");
-	fs::path path("test");
+	
+	std::cout << "Enter path(relative or absolute): ";
+	std::string pathInput;
+	std::cin >> pathInput;
+	
+	fs::path path(pathInput);
 	analyseDirectory(path);
 	return 0;
 }
