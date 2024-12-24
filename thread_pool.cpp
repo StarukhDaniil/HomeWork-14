@@ -1,7 +1,10 @@
+#pragma once
 #include "thread_pool.h"
 #include <iostream>
 
-void thread_pool::worker_thread() {
+template<typename... T>
+requires (std::is_copy_assignable_v<T> && ...)
+void thread_pool<T...>::worker_thread() {
 	while (true) {
 		if (stop_threads_count.load() > 0) {
 			stop_threads_count.fetch_sub(1);
@@ -12,7 +15,7 @@ void thread_pool::worker_thread() {
 			|| (tasks.size() > task_min.load() && workers.size() == num_threads_min.load()))) {
 			thread_manager();
 		}
-		std::function<void()> task;
+		function_and_parameters<T...> task;
 		{
 			std::unique_lock<std::mutex> task_lock(queue_mtx);
 			cv.wait(task_lock, [this]() { 
@@ -21,14 +24,16 @@ void thread_pool::worker_thread() {
 			if (stop.load() && tasks.empty()) {
 				return;
 			}
-			task = std::move(tasks.front());
+			task = tasks.front();
 			tasks.pop();
 		}
-		task();
+		std::apply(task.get_function(), task.get_args());
 	}
 }
 
-void thread_pool::thread_manager() {
+template<typename... T>
+requires (std::is_copy_assignable_v<T> && ...)
+void thread_pool<T...>::thread_manager() {
 	if (tasks.size() < task_min.load() && (workers.size() == num_threads_max)) {
 		stop_threads_count.store(num_threads_min);
 		for (int i = 0; i < num_threads_min; ++i) {
@@ -42,15 +47,22 @@ void thread_pool::thread_manager() {
 	}
 }
 
-void thread_pool::enqueue_task(std::function<void()> task) {
+template<typename... T>
+requires (std::is_copy_assignable_v<T> && ...)
+void thread_pool<T...>::enqueue_task(const std::function<void(T...)>& task, T... args) {
 	{
 		std::lock_guard<std::mutex> lock(queue_mtx);
-		tasks.push(std::move(task));
+		if constexpr (sizeof...(T) != 0)
+			tasks.emplace(task, args...);
+		else
+			tasks.emplace(task);
 	}
 	cv.notify_one();
 }
 
-thread_pool::thread_pool(const std::size_t& num_threads, const std::size_t& num_threads_min, const std::size_t& task_min)
+template<typename... T>
+requires (std::is_copy_assignable_v<T> && ...)
+thread_pool<T...>::thread_pool(const std::size_t& num_threads, const std::size_t& num_threads_min, const std::size_t& task_min)
 	: stop(false), num_threads_max(num_threads),
 	num_threads_min(num_threads_min), task_min(task_min) {
 	for (std::size_t i = 0; i < num_threads; ++i) {
@@ -58,7 +70,9 @@ thread_pool::thread_pool(const std::size_t& num_threads, const std::size_t& num_
 	}
 }
 
-thread_pool::~thread_pool() {
+template<typename... T>
+requires (std::is_copy_assignable_v<T> && ...)
+thread_pool<T...>::~thread_pool() {
 	stop.store(true);
 	cv.notify_all();
 	for (std::thread& worker : workers) {
