@@ -43,16 +43,18 @@ requires (std::is_copy_assignable_v<T> && ...)
 class thread_pool {
 private:
 	std::vector<std::thread> workers;
-	//std::queue<function_and_parameters<T...>> tasks;
 	std::queue<function_and_parameters<T...>> tasks;
 	std::atomic<bool> stop;
 	std::atomic<std::size_t> stop_threads_count;
 	std::atomic<std::size_t> num_threads_max;
 	std::atomic<std::size_t> num_threads_min;
 	std::atomic<std::size_t> task_min;
+	std::vector<std::thread>::iterator thread_erase_it;
 	std::mutex queue_mtx;
 	std::mutex manager_mtx;
-	std::condition_variable cv;
+	std::mutex erase_mtx;
+	std::condition_variable cv_queue;
+	std::condition_variable cv_erase;
 	void worker_thread();
 	void thread_manager();
 public:
